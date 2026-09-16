@@ -1,25 +1,66 @@
-const dotenv = require('dotenv');
-// 1. Load env first. Ensure the filename matches your actual file (config.env vs .env)
-dotenv.config({ path: './config.env' }); 
+const dotenv = require("dotenv");
+const mongoose = require("mongoose");
 
+// Load environment variables FIRST
+dotenv.config({ path: "./config.env" });
 
-console.log("🔑 API Key Loaded:", process.env.GEMINI_API_KEY ? "YES" : "NO");
-const mongoose = require('mongoose');
-// 2. Import app ONLY after dotenv has loaded the keys
-const app = require('./app');
+console.log(
+  "RESEND KEY LOADED:",
+  process.env.RESEND_API_KEY ? "YES" : "NO"
+);
 
-// const DB = process.env.DATABASE.replace(
-//   "<DATABASE_PASSWORD>",
-//   process.env.DATABASE_PASSWORD
-// );
+console.log(
+  "DATABASE LOADED:",
+  process.env.DATABASE ? "YES" : "NO"
+);
 
+// Load app AFTER environment variables
+const app = require("./app");
 
-mongoose
-  .connect(process.env.DATABASE)
-  .then(() => console.log('✅ DB connection successful!'))
-  .catch(err => console.error('❌ Connection error:', err));
+const PORT = process.env.PORT || 3000;
 
-const port = process.env.PORT || 3000;
-const server = app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-});
+let isConnected = false;
+
+const connectDB = async () => {
+  if (isConnected) {
+    return;
+  }
+
+  if (!process.env.DATABASE) {
+    throw new Error("DATABASE environment variable is not set");
+  }
+
+  await mongoose.connect(process.env.DATABASE);
+
+  isConnected = true;
+  console.log("✅ MongoDB connected successfully");
+};
+
+// Local server
+if (require.main === module) {
+  connectDB()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error("❌ Database connection failed:", error);
+      process.exit(1);
+    });
+}
+
+// Vercel serverless
+module.exports = async (req, res) => {
+  try {
+    await connectDB();
+    return app(req, res);
+  } catch (error) {
+    console.error("❌ Server error:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
