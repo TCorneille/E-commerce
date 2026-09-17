@@ -1,43 +1,38 @@
 const dotenv = require("dotenv");
+dotenv.config({ path: './config.env' }); 
+
 const mongoose = require("mongoose");
-
-dotenv.config({ path: "./config.env" });
-
 const app = require("./app");
-
-const PORT = process.env.PORT || 3000;
 
 let isConnected = false;
 
-const connectDB = async () => {
+async function connectDB() {
   if (isConnected) {
     return;
   }
+
+  console.log("DATABASE:", process.env.DATABASE ? "FOUND" : "MISSING");
 
   if (!process.env.DATABASE) {
     throw new Error("DATABASE environment variable is missing");
   }
 
-  try {
-    await mongoose.connect(process.env.DATABASE);
+  await mongoose.connect(process.env.DATABASE);
 
-    isConnected = true;
+  isConnected = true;
 
-    console.log("✅ MongoDB connected successfully");
-  } catch (error) {
-    console.error("❌ MongoDB connection failed:", error);
-    throw error;
-  }
-};
+  console.log("✅ MongoDB connected");
+}
 
-// VERCEL
 module.exports = async (req, res) => {
   try {
     await connectDB();
 
+    console.log("✅ Calling Express app");
+
     return app(req, res);
   } catch (error) {
-    console.error("❌ Vercel server error:", error);
+    console.error("❌ ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -46,16 +41,17 @@ module.exports = async (req, res) => {
   }
 };
 
-// LOCAL DEVELOPMENT
 if (require.main === module) {
   connectDB()
     .then(() => {
+      const PORT = process.env.PORT || 3000;
+
       app.listen(PORT, () => {
-        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`🚀 Server running on ${PORT}`);
       });
     })
     .catch((error) => {
-      console.error("❌ Server startup failed:", error);
+      console.error("❌ Startup error:", error);
       process.exit(1);
     });
 }
