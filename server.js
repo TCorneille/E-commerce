@@ -1,20 +1,8 @@
 const dotenv = require("dotenv");
 const mongoose = require("mongoose");
 
-// Load environment variables FIRST
 dotenv.config({ path: "./config.env" });
 
-console.log(
-  "RESEND KEY LOADED:",
-  process.env.RESEND_API_KEY ? "YES" : "NO"
-);
-
-console.log(
-  "DATABASE LOADED:",
-  process.env.DATABASE ? "YES" : "NO"
-);
-
-// Load app AFTER environment variables
 const app = require("./app");
 
 const PORT = process.env.PORT || 3000;
@@ -27,16 +15,22 @@ const connectDB = async () => {
   }
 
   if (!process.env.DATABASE) {
-    throw new Error("DATABASE environment variable is not set");
+    throw new Error("DATABASE environment variable is missing");
   }
 
-  await mongoose.connect(process.env.DATABASE);
+  try {
+    await mongoose.connect(process.env.DATABASE);
 
-  isConnected = true;
-  console.log("✅ MongoDB connected successfully");
+    isConnected = true;
+
+    console.log("✅ MongoDB connected successfully");
+  } catch (error) {
+    console.error("❌ MongoDB connection failed:", error);
+    throw error;
+  }
 };
 
-// Local server
+// Local development
 if (require.main === module) {
   connectDB()
     .then(() => {
@@ -45,22 +39,23 @@ if (require.main === module) {
       });
     })
     .catch((error) => {
-      console.error("❌ Database connection failed:", error);
+      console.error("❌ Server startup failed:", error);
       process.exit(1);
     });
 }
 
-// Vercel serverless
-module.exports = async (req, res) => {
-  try {
-    await connectDB();
-    return app(req, res);
-  } catch (error) {
-    console.error("❌ Server error:", error);
+// Vercel
+// module.exports = async (req, res) => {
+//   try {
+//     await connectDB();
 
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-};
+//     return app(req, res);
+//   } catch (error) {
+//     console.error("❌ Vercel server error:", error);
+
+//     return res.status(500).json({
+//       success: false,
+//       error: error.message,
+//     });
+//   }
+// };
