@@ -30,7 +30,23 @@ const connectDB = async () => {
   }
 };
 
-// Local development
+// VERCEL
+module.exports = async (req, res) => {
+  try {
+    await connectDB();
+
+    return app(req, res);
+  } catch (error) {
+    console.error("❌ Vercel server error:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+// LOCAL DEVELOPMENT
 if (require.main === module) {
   connectDB()
     .then(() => {
@@ -43,19 +59,3 @@ if (require.main === module) {
       process.exit(1);
     });
 }
-
-// Vercel
-// module.exports = async (req, res) => {
-//   try {
-//     await connectDB();
-
-//     return app(req, res);
-//   } catch (error) {
-//     console.error("❌ Vercel server error:", error);
-
-//     return res.status(500).json({
-//       success: false,
-//       error: error.message,
-//     });
-//   }
-// };
