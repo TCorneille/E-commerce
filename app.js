@@ -9,6 +9,9 @@ const fileUpload = require("express-fileupload");
 const authRoutes = require('./routes/authRoutes'); 
 const productRoutes = require('./routes/productRoutes');
 const cartRoutes = require('./routes/cartRoutes');
+const accountRoutes = require('./routes/accountRoutes');
+// const transactionRoutes = require('./routes/transactionRoutes');
+const checkoutRoutes = require('./routes/checkoutRoutes');
 
 const app = express();
 
@@ -59,6 +62,8 @@ app.use((req, res, next) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use('/api/v1/cart', cartRoutes);
+app.use('/api/v1/account', accountRoutes);
+app.use('/api/v1/checkout', checkoutRoutes);
 
 /* =====================================================
     4. ERROR HANDLING
