@@ -30,7 +30,7 @@ const transactionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-populate user info
+// Auto-populate user info using standard synchronous middleware signature
 transactionSchema.pre(/^find/, function (next) {
   this.populate({ path: 'user', select: 'name email' });
   next();
