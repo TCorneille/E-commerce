@@ -2,7 +2,9 @@ const Account = require('../models/accountModel');
 const Transaction = require('../models/transactionModel');
 const Cart = require('../models/cartModel');
 
-
+// @desc    Process payment using Account + Voucher dynamic rules
+// @route   POST /api/v1/checkout
+// @access  Private
 exports.processCheckout = async (req, res) => {
   try {
     const userId = req.user._id;
