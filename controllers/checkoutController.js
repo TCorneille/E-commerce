@@ -2,7 +2,7 @@ const Account = require('../models/accountModel');
 const Transaction = require('../models/transactionModel');
 const Cart = require('../models/cartModel');
 
-// @desc    Process payment using Account + Voucher rules
+// @desc    Process payment using Account + Voucher dynamic rules
 // @route   POST /api/checkout
 // @access  Private
 exports.processCheckout = async (req, res) => {
@@ -11,7 +11,7 @@ exports.processCheckout = async (req, res) => {
 
     // 1. Fetch user's cart
     const cart = await Cart.findOne({ user: userId }).populate('products.product');
-    if (!cart || cart.products.length === 0) {
+    if (!cart || !cart.products || cart.products.length === 0) {
       return res.status(400).json({ success: false, error: 'Cart is empty' });
     }
 
@@ -21,7 +21,7 @@ exports.processCheckout = async (req, res) => {
       account = await Account.create({ user: userId, balance: 0, lifetimeVoucherUsed: 0 });
     }
 
-    // 3. Calculate Cart Total
+    // 3. Calculate current Cart Total
     const cartTotal = cart.products.reduce((acc, item) => {
       if (!item.product) return acc;
       const price = item.product.price || 0;
@@ -32,62 +32,67 @@ exports.processCheckout = async (req, res) => {
 
     const roundedTotal = Number(cartTotal.toFixed(2));
 
-    // 4. Determine if first purchase (by checking transaction ledger)
-    const paymentCount = await Transaction.countDocuments({ user: userId, type: 'payment' });
-    const isFirstTime = paymentCount === 0;
+    if (roundedTotal <= 0) {
+      return res.status(400).json({ success: false, error: 'Cart total must be greater than $0.00' });
+    }
 
-    // 5. Compute Voucher & Account split based on your rules
-    const remainingVoucherPool = Math.max(0, 1000 - account.lifetimeVoucherUsed);
+    // 4. Fetch the user's FIRST transaction (to retrieve 1st checkout total)
+    const firstPayment = await Transaction.findOne({ user: userId, type: 'payment' })
+      .sort({ createdAt: 1 }); // Oldest payment
+
+    const isFirstTime = !firstPayment;
+    const remainingVoucherPool = Math.max(0, 1000 - (account.lifetimeVoucherUsed || 0));
+
     let voucherToUse = 0;
     let accountToUse = 0;
 
     if (isFirstTime) {
-      // First purchase: Use voucher up to $200 (capped by remaining pool and cart total)
+      // Rule 1: First purchase — Use voucher up to $200 (capped by remaining pool and total)
       voucherToUse = Math.min(roundedTotal, 200, remainingVoucherPool);
       accountToUse = Number((roundedTotal - voucherToUse).toFixed(2));
     } else {
-      // Subsequent purchases:
-      const requiredAccountShare = Number((roundedTotal * 0.7).toFixed(2));
-      const remainingCartShare = Number((roundedTotal - requiredAccountShare).toFixed(2));
+      // Calculate 70% threshold of the 1st checkout total
+      const firstCheckoutTotal = firstPayment.amount || 0;
+      const threshold70Percent = Number((firstCheckoutTotal * 0.7).toFixed(2));
 
-      if (roundedTotal <= requiredAccountShare) {
+      if (roundedTotal > threshold70Percent) {
+        // Rule 2A: Subsequent checkout > 70% of 1st checkout total → 100% Account wallet
         accountToUse = roundedTotal;
         voucherToUse = 0;
       } else {
-        accountToUse = requiredAccountShare;
-        voucherToUse = Math.min(remainingCartShare, 200, remainingVoucherPool);
-        
-        // If voucher pool is exhausted/capped, account covers remaining amount
+        // Rule 2B: Subsequent checkout <= 70% of 1st checkout total → 30% Voucher split allowed
+        const voucherShare = Number((roundedTotal * 0.3).toFixed(2));
+        voucherToUse = Math.min(voucherShare, 200, remainingVoucherPool);
         accountToUse = Number((roundedTotal - voucherToUse).toFixed(2));
       }
     }
 
-    // 6. Verify account has enough balance
+    // 5. Verify user has enough account wallet balance
     if (account.balance < accountToUse) {
       return res.status(400).json({
         success: false,
-        error: `Insufficient balance! Account needs $${accountToUse.toFixed(
+        error: `Insufficient balance! Required from Account wallet: $${accountToUse.toFixed(
           2
-        )}, but your available balance is $${account.balance.toFixed(2)}`
+        )}, but available balance is $${account.balance.toFixed(2)}`
       });
     }
 
-    // 7. Update Account state
+    // 6. Update Account state
     account.balance -= accountToUse;
-    account.lifetimeVoucherUsed += voucherToUse;
+    account.lifetimeVoucherUsed = (account.lifetimeVoucherUsed || 0) + voucherToUse;
     await account.save();
 
-    // 8. Log the payment entry into Transaction ledger
+    // 7. Log payment into Transaction ledger
     const transaction = await Transaction.create({
       user: userId,
       type: 'payment',
       amount: roundedTotal,
       accountAmount: accountToUse,
       voucherAmount: voucherToUse,
-      description: `Cart Checkout ($${accountToUse} Account, $${voucherToUse} Voucher)`
+      description: `Cart Checkout ($${accountToUse.toFixed(2)} Account, $${voucherToUse.toFixed(2)} Voucher)`
     });
 
-    // 9. Clear cart
+    // 8. Clear cart
     cart.products = [];
     await cart.save();
 
