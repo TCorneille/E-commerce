@@ -55,4 +55,3 @@ transactionSchema.pre(/^find/, function () {
 const Transaction = mongoose.model('Transaction', transactionSchema);
 
 module.exports = Transaction;
-g
