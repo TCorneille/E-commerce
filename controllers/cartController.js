@@ -45,27 +45,46 @@ const formatCartResponse = (cart) => {
   };
 };
 
-// @desc    Get current user's cart
-// @route   GET /api/cart
-// @access  Private (req.user required)
 exports.getCart = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    let cart = await Cart.findOne({ user: userId }).populate('products.product');
+    // 1. Fetch cart and populate products
+    let cart = await Cart.findOne({ user: userId }).populate({
+      path: 'products.product',
+      select: 'title price discountPercentage thumbnail images'
+    });
 
+    // 2. If no cart exists, return clean empty structure
     if (!cart) {
-      cart = await Cart.create({ user: userId, products: [] });
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: null,
+          userId,
+          products: [],
+          total: 0,
+          discountedTotal: 0,
+          totalProducts: 0,
+          totalQuantity: 0
+        }
+      });
+    }
+
+    // 3. Filter out any orphaned or deleted product references
+    if (Array.isArray(cart.products)) {
+      cart.products = cart.products.filter(item => item && item.product);
     }
 
     res.status(200).json({
       success: true,
-      data: formatCartResponse(cart),
+      data: cart
     });
   } catch (error) {
+    console.error('Get Cart Error:', error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error.message
     });
   }
 };
