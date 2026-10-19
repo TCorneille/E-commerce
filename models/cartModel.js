@@ -1,5 +1,7 @@
+
 const mongoose = require('mongoose');
 
+// Cart item schema
 const cartItemSchema = new mongoose.Schema(
   {
     product: {
@@ -14,9 +16,12 @@ const cartItemSchema = new mongoose.Schema(
       default: 1,
     },
   },
-  { _id: false }
+  {
+    _id: false,
+  }
 );
 
+// Cart schema
 const cartSchema = new mongoose.Schema(
   {
     user: {
@@ -25,104 +30,97 @@ const cartSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    products: [cartItemSchema],
+    products: {
+      type: [cartItemSchema],
+      default: [],
+    },
   },
   {
     timestamps: true,
     toJSON: {
       virtuals: true,
-      transform: function (doc, ret) {
-        const safeProducts = Array.isArray(ret.products) ? ret.products : [];
-
-        const formattedProducts = safeProducts
-          .filter((item) => item && item.product) // Filter out unpopulated or deleted references
-          .map((item) => {
-            const product = typeof item.product === 'object' && item.product !== null ? item.product : {};
-            const price = typeof product.price === 'number' ? product.price : 0;
-            const discountPercentage = typeof product.discountPercentage === 'number' ? product.discountPercentage : 0;
-            const qty = typeof item.quantity === 'number' ? item.quantity : 1;
-
-            const itemTotal = Number((price * qty).toFixed(2));
-            const itemDiscountedTotal = Number((itemTotal * (1 - discountPercentage / 100)).toFixed(2));
-
-            return {
-              id: product._id || item.product,
-              title: product.title || 'Product',
-              price,
-              quantity: qty,
-              total: itemTotal,
-              discountPercentage,
-              discountedTotal: itemDiscountedTotal,
-              thumbnail: product.thumbnail || (product.images && product.images[0]) || '',
-            };
-          });
-
-        return {
-          id: ret._id,
-          userId: ret.user,
-          products: formattedProducts,
-          total: ret.total || 0,
-          discountedTotal: ret.discountedTotal || 0,
-          totalProducts: ret.totalProducts || 0,
-          totalQuantity: ret.totalQuantity || 0,
-        };
-      },
+    },
+    toObject: {
+      virtuals: true,
     },
   }
 );
 
-// Safe auto-population pre-hook
-cartSchema.pre(/^find/, function (next) {
-  this.populate({
-    path: 'products.product',
-    select: 'title price discountPercentage thumbnail images'
-  });
-  next();
-});
-
-// Safe Virtuals
+// Virtual: Number of distinct products in the cart
 cartSchema.virtual('totalProducts').get(function () {
   if (!Array.isArray(this.products)) return 0;
-  return this.products.filter(item => item && item.product).length;
+
+  return this.products.filter(
+    (item) => item && item.product
+  ).length;
 });
 
+// Virtual: Total quantity of all products
 cartSchema.virtual('totalQuantity').get(function () {
   if (!Array.isArray(this.products)) return 0;
-  return this.products.reduce((acc, item) => {
-    if (!item || !item.product) return acc;
-    return acc + (item.quantity || 0);
+
+  return this.products.reduce((total, item) => {
+    if (!item || !item.product) return total;
+
+    return total + (Number(item.quantity) || 0);
   }, 0);
 });
 
+// Virtual: Total price before discounts
 cartSchema.virtual('total').get(function () {
   if (!Array.isArray(this.products)) return 0;
-  return Number(
-    this.products
-      .reduce((acc, item) => {
-        if (!item || !item.product || typeof item.product !== 'object') return acc;
-        const price = item.product.price || 0;
-        const qty = item.quantity || 0;
-        return acc + price * qty;
-      }, 0)
-      .toFixed(2)
-  );
+
+  const total = this.products.reduce((sum, item) => {
+    if (
+      !item ||
+      !item.product ||
+      typeof item.product !== 'object'
+    ) {
+      return sum;
+    }
+
+    const price = Number(item.product.price) || 0;
+    const quantity = Number(item.quantity) || 0;
+
+    return sum + price * quantity;
+  }, 0);
+
+  return Number(total.toFixed(2));
 });
 
+// Virtual: Total price after discounts
 cartSchema.virtual('discountedTotal').get(function () {
   if (!Array.isArray(this.products)) return 0;
-  return Number(
-    this.products
-      .reduce((acc, item) => {
-        if (!item || !item.product || typeof item.product !== 'object') return acc;
-        const price = item.product.price || 0;
-        const discount = item.product.discountPercentage || 0;
-        const qty = item.quantity || 0;
-        const itemTotal = price * qty;
-        return acc + itemTotal * (1 - discount / 100);
-      }, 0)
-      .toFixed(2)
-  );
+
+  const total = this.products.reduce((sum, item) => {
+    if (
+      !item ||
+      !item.product ||
+      typeof item.product !== 'object'
+    ) {
+      return sum;
+    }
+
+    const price = Number(item.product.price) || 0;
+    const discount = Math.min(
+      100,
+      Math.max(
+        0,
+        Number(item.product.discountPercentage) || 0
+      )
+    );
+    const quantity = Number(item.quantity) || 0;
+
+    return (
+      sum +
+      price * quantity * (1 - discount / 100)
+    );
+  }, 0);
+
+  return Number(total.toFixed(2));
 });
 
+// Create and export the Cart model
 const Cart = mongoose.model('Cart', cartSchema);
+
 module.exports = Cart;
