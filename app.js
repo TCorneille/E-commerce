@@ -3,14 +3,11 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const fileUpload = require("express-fileupload");
 
-
-
 // Import Routes
 const authRoutes = require('./routes/authRoutes'); 
 const productRoutes = require('./routes/productRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const accountRoutes = require('./routes/accountRoutes');
-// const transactionRoutes = require('./routes/transactionRoutes');
 const checkoutRoutes = require('./routes/checkoutRoutes');
 
 const app = express();
@@ -23,19 +20,33 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
 ];
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('onrender.com')) {
-      callback(null, true);
-    } else {
-      callback(null, true); 
+
+    // Explicit origin checking
+    if (
+      allowedOrigins.includes(origin) || 
+      origin.endsWith('.vercel.app') || 
+      origin.includes('onrender.com')
+    ) {
+      return callback(null, origin); // Pass back exact origin string for Access-Control-Allow-Origin
     }
+    
+    return callback(null, origin); // Fallback for dev environments
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true,
-}));
+  optionsSuccessStatus: 200, // Legacy browser support for 204 response
+};
+
+// Apply CORS middleware globally
+app.use(cors(corsOptions));
+
+// Explicitly handle HTTP preflight (OPTIONS) requests across all routes
+app.options('*', cors(corsOptions));
 
 /* =====================================================
     2. MIDDLEWARES
@@ -69,8 +80,8 @@ app.use('/api/v1/checkout', checkoutRoutes);
     4. ERROR HANDLING
 ===================================================== */
 
-// Catch-all for undefined routes (Express 5 fix)
-app.all('/*splat', (req, res, next) => {
+// Catch-all for undefined routes
+app.all('*', (req, res, next) => {
   const err = new Error(`Cannot find ${req.originalUrl} on this server!`);
   err.statusCode = 404;
   err.status = 'fail'; 
@@ -79,11 +90,8 @@ app.all('/*splat', (req, res, next) => {
 
 // Global Error Middleware
 app.use((err, req, res, next) => {
-  // 1. Log the error for your own debugging
   console.error("GLOBAL ERROR:", err);
 
-  // 2. Ensure statusCode is a valid NUMBER.
-  // We check err.statusCode first, then err.status. If neither is a number, default to 500.
   let statusCode = 500;
   if (Number.isInteger(err.statusCode)) {
     statusCode = err.statusCode;
@@ -91,7 +99,6 @@ app.use((err, req, res, next) => {
     statusCode = err.status;
   }
 
-  // 3. Ensure the status message is a STRING (fail or error)
   const statusMessage = err.status && typeof err.status === 'string' 
     ? err.status 
     : (statusCode >= 400 && statusCode < 500 ? 'fail' : 'error');
