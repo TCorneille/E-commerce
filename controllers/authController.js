@@ -280,3 +280,14 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
 
   createSendToken(user, 200, res);
 });
+// ================= GET CURRENT USER =================
+
+exports.getMe = catchAsync(async (req, res, next) => {
+  // req.user is already attached by your 'protect' middleware
+  res.status(200).json({
+    status: "success",
+    data: {
+      user: req.user,
+    },
+  });
+});
